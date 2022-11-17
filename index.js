@@ -26,7 +26,22 @@ app.delete('/bookings/:id)
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.ixgnoqu.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+ 
 
+function verifyJWT(req,res,next){
+   const authHeader =req.headers.authorization  
+   if(!authHeader){
+    return res.status(401).send('unauthorized access')
+}
+const token=authHeader.split(' ')[1];
+ jwt.verify(token,process.env.ACCESS_TOKEN, function(error,decoded){
+    if(error){
+        return res.status(403).send({message:'forbidden access'})
+    }
+     req.decoded=decoded
+     next()
+ })
+}
 async function run() {
     try {
         const appointmentOptionCollection = client.db('doctors-portal').collection('appointmentOptions')
@@ -101,8 +116,13 @@ async function run() {
         })
 
           
-         app.get('/bookings',async(req,res)=>{
+         app.get('/bookings',verifyJWT,async(req,res)=>{
             const email=req.query.email 
+            const decodedEmail=req.decoded.email 
+            if(email !==decodedEmail){
+                return res.status(403).send({message:'forbidden access'})
+            }
+
             const query={
                 email:email
             }
