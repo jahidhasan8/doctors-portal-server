@@ -26,21 +26,21 @@ app.delete('/bookings/:id)
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.ixgnoqu.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
- 
 
-function verifyJWT(req,res,next){
-   const authHeader =req.headers.authorization  
-   if(!authHeader){
-    return res.status(401).send('unauthorized access')
-}
-const token=authHeader.split(' ')[1];
- jwt.verify(token,process.env.ACCESS_TOKEN, function(error,decoded){
-    if(error){
-        return res.status(403).send({message:'forbidden access'})
+
+function verifyJWT(req, res, next) {
+    const authHeader = req.headers.authorization
+    if (!authHeader) {
+        return res.status(401).send('unauthorized access')
     }
-     req.decoded=decoded
-     next()
- })
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, process.env.ACCESS_TOKEN, function (error, decoded) {
+        if (error) {
+            return res.status(403).send({ message: 'forbidden access' })
+        }
+        req.decoded = decoded
+        next()
+    })
 }
 async function run() {
     try {
@@ -49,6 +49,19 @@ async function run() {
         const usersCollection = client.db('doctors-portal').collection('users')
         const doctorsCollection = client.db('doctors-portal').collection('doctors')
 
+
+        // verify admin panel
+        //NOTE: make sure you use verify admin after verifyJWT 
+        const verifyAdmin = async(req, res, next) => {
+            //    console.log('inside verifyAdmin',req.decoded.email);
+            const decodedEmail = req.decoded.email
+            const query = { email: decodedEmail }
+            const user = await usersCollection.findOne(query)
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ message: 'Forbidden access' })
+            }
+            next()
+        }
         //  use aggregate to query multiple collection and then merge data
         app.get('/appointmentOptions', async (req, res) => {
 
@@ -81,9 +94,9 @@ async function run() {
                         foreignField: 'treatment',
                         pipeline: [
                             {
-                                $match:{
-                                    $expr:{
-                                        $eq:['$appointmentDate',date]
+                                $match: {
+                                    $expr: {
+                                        $eq: ['$appointmentDate', date]
                                     }
                                 }
                             }
@@ -92,23 +105,23 @@ async function run() {
                     }
                 },
                 {
-                    $project:{
-                        name:1,
-                        slots:1,
-                        booked:{
-                            $map:{
-                                input:'$booked',
-                                as:'book',
-                                in:'$$book.slot'
+                    $project: {
+                        name: 1,
+                        slots: 1,
+                        booked: {
+                            $map: {
+                                input: '$booked',
+                                as: 'book',
+                                in: '$$book.slot'
                             }
                         }
                     }
                 },
                 {
-                    $project:{
-                        name:1,
-                        slots:{
-                            $setDifference:['$slots','$booked']
+                    $project: {
+                        name: 1,
+                        slots: {
+                            $setDifference: ['$slots', '$booked']
                         }
                     }
                 }
@@ -116,107 +129,115 @@ async function run() {
             res.send(options)
         })
 
-          app.get('/appointmentSpecialty',async(req,res)=>{
-            const query={}
-            const result=await appointmentOptionCollection.find(query).project({name:1}).toArray()
+        app.get('/appointmentSpecialty', async (req, res) => {
+            const query = {}
+            const result = await appointmentOptionCollection.find(query).project({ name: 1 }).toArray()
             res.send(result)
-          })
-         app.get('/bookings',verifyJWT,async(req,res)=>{
-            const email=req.query.email 
-            const decodedEmail=req.decoded.email 
-            if(email !==decodedEmail){
-                return res.status(403).send({message:'forbidden access'})
+        })
+        app.get('/bookings', verifyJWT, async (req, res) => {
+            const email = req.query.email
+            const decodedEmail = req.decoded.email
+            if (email !== decodedEmail) {
+                return res.status(403).send({ message: 'forbidden access' })
             }
 
-            const query={
-                email:email
+            const query = {
+                email: email
             }
-            const bookings=await bookingCollection.find(query).toArray()
+            const bookings = await bookingCollection.find(query).toArray()
             res.send(bookings)
-         })
+        })
 
         app.post('/bookings', async (req, res) => {
             const booking = req.body
-            const query={
-                appointmentDate:booking.appointmentDate,
-                email:booking.email,
-                treatment:booking.treatment
+            const query = {
+                appointmentDate: booking.appointmentDate,
+                email: booking.email,
+                treatment: booking.treatment
 
             }
 
-            const alreadyBooked=await bookingCollection.find(query).toArray()
-            if(alreadyBooked.length){
-                 const message=`You already have a booking on ${booking.appointmentDate}`
-                 return res.send({acknowledged:false,message})
+            const alreadyBooked = await bookingCollection.find(query).toArray()
+            if (alreadyBooked.length) {
+                const message = `You already have a booking on ${booking.appointmentDate}`
+                return res.send({ acknowledged: false, message })
             }
             const result = await bookingCollection.insertOne(booking)
             res.send(result)
         });
-         
 
-        app.get('/jwt',async(req,res)=>{
-            const email=req.query.email
-            const query={email:email}
-            const user=await usersCollection.findOne(query)
-            if(user){
-                const token=jwt.sign({email},process.env.ACCESS_TOKEN,{expiresIn:'1d'})
-                return res.send({accessToken:token})
+
+        app.get('/jwt', async (req, res) => {
+            const email = req.query.email
+            const query = { email: email }
+            const user = await usersCollection.findOne(query)
+            if (user) {
+                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, { expiresIn: '1d' })
+                return res.send({ accessToken: token })
             }
-            res.status(403).send({accessToken:''})
+            res.status(403).send({ accessToken: '' })
 
         })
 
-        app.get('/users',async(req,res)=>{
-            const query={}
-            const users=await usersCollection.find(query).toArray()
+        app.get('/users', async (req, res) => {
+            const query = {}
+            const users = await usersCollection.find(query).toArray()
             res.send(users)
-            
-        })
-
-        app.get('/users/admin/:email',async(req,res)=>{
-              const email=req.params.email
-              const query={email}
-              const user=await usersCollection.findOne(query);
-              res.send({isAdmin:user?.role ==='admin'});
 
         })
 
+        app.get('/users/admin/:email', async (req, res) => {
+            const email = req.params.email
+            const query = { email }
+            const user = await usersCollection.findOne(query);
+            res.send({ isAdmin: user?.role === 'admin' });
 
-        app.post('/users',async(req,res)=>{
-            const user=req.body
-            const result=await usersCollection.insertOne(user)
+        })
+
+
+        app.post('/users', async (req, res) => {
+            const user = req.body
+            const result = await usersCollection.insertOne(user)
             res.send(result)
         })
 
-        app.put('/users/admin/:id',verifyJWT,async(req,res)=>{
-            const decodedEmail=req.decoded.email
-            const query={email:decodedEmail}
-            const user=await usersCollection.findOne(query)
-            if(user?.role !=='admin'){
-              return res.status(403).send({message:'Forbidden access'})
-            }
-            const id=req.params.id
-            const filter={_id:ObjectId(id)}
-            const options={upsert:true}
-            const updatedDoc={
-                $set:{
-                    role:'admin'
+        app.put('/users/admin/:id', verifyJWT,verifyAdmin, async (req, res) => {
+          /*   const decodedEmail = req.decoded.email
+            const query = { email: decodedEmail }
+            const user = await usersCollection.findOne(query)
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ message: 'Forbidden access' })
+            } */
+            const id = req.params.id
+            const filter = { _id: ObjectId(id) }
+            const options = { upsert: true }
+            const updatedDoc = {
+                $set: {
+                    role: 'admin'
                 }
             }
-            const result=await usersCollection.updateOne(filter,updatedDoc,options)
-            res.send(result);   
+            const result = await usersCollection.updateOne(filter, updatedDoc, options)
+            res.send(result);
         });
-        
-         app.get('/doctors',async(req,res)=>{
-             const query={}
-             const doctors=await doctorsCollection.find(query).toArray()
-             res.send(doctors)
-         })
 
-        app.post('/doctors',async(req,res)=>{
-            const doctor=req.body 
-            const result=await doctorsCollection.insertOne(doctor)
+        app.get('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
+            const query = {}
+            const doctors = await doctorsCollection.find(query).toArray()
+            res.send(doctors)
+        })
+
+        app.post('/doctors', verifyJWT,verifyAdmin, async (req, res) => {
+            const doctor = req.body
+            const result = await doctorsCollection.insertOne(doctor)
             res.send(result)
+        });
+
+        app.delete('/doctors/:id', verifyJWT,verifyAdmin, async (req, res) => {
+            const id = req.params.id
+            const filter = { _id: ObjectId(id) }
+            const result = await doctorsCollection.deleteOne(filter)
+            res.send(result)
+
         })
 
     }
