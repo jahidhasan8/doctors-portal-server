@@ -50,6 +50,7 @@ async function run() {
         const bookingCollection = client.db('doctors-portal').collection('bookings')
         const usersCollection = client.db('doctors-portal').collection('users')
         const doctorsCollection = client.db('doctors-portal').collection('doctors')
+        const paymentsCollection = client.db('doctors-portal').collection('payments')
 
 
         // verify admin panel
@@ -192,6 +193,21 @@ async function run() {
                 clientSecret: paymentIntent.client_secret
               });
         });
+
+        app.post('/payments',async(req,res)=>{
+            const payment=req.body 
+            const result =await paymentsCollection.insertOne(payment)
+            const id=payment.bookingId
+            const filter={_id:ObjectId(id)}
+            const updatedDoc={
+                $set:{
+                    paid:true,
+                    transactionId:payment.transactionId
+                }
+            }
+            const updatedResult=await bookingCollection.updateOne(filter,updatedDoc)
+            res.send(result)
+        })
 
         app.get('/jwt', async (req, res) => {
             const email = req.query.email
