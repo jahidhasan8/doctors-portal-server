@@ -1,10 +1,10 @@
 const express = require('express')
 const cors = require('cors')
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+require('dotenv').config()
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const jwt = require('jsonwebtoken');
-require('dotenv').config()
 
 const port = process.env.PORT || 5000
 
@@ -187,11 +187,11 @@ async function run() {
                     "card"
                   ]
             });
-            
+
             res.send({
-                clientSecret: paymentIntent.client_secret,
+                clientSecret: paymentIntent.client_secret
               });
-        })
+        });
 
         app.get('/jwt', async (req, res) => {
             const email = req.query.email
